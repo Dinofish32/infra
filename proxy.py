@@ -1,8 +1,10 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import logging
 import requests
 import time
 from threading import Thread
+
+import metrics
 
 BACKEND_PORTS = [8001, 8002, 8003]
 _backend_index = 0
@@ -61,6 +63,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/metrics":
+            body = metrics.render_metrics().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        metrics.record_request()
         start = time.perf_counter()
         backend_url = ProxyHandler.get_backend()
         if backend_url is None:
@@ -100,7 +112,7 @@ def main():
     health_check_thread = Thread(target=health_check, daemon=True)
     health_check_thread.start()
 
-    server = HTTPServer((HOST, PORT), ProxyHandler)
+    server = ThreadingHTTPServer((HOST, PORT), ProxyHandler)
     logging.info("Proxy now running")
     server.serve_forever()
 

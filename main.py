@@ -5,7 +5,7 @@ import time
 import threading
 
 HOST = "localhost"
-PORTS = [8003]
+PORTS = [8001, 8002, 8003]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,7 +28,7 @@ class BackendHandler(BaseHTTPRequestHandler):
             html = f"""
             <html>
                 <head>
-                    <title>Hello World</title>
+                    <title>Networking Project</title>
                 </head>
                 <body>
                     <h1>did i just network stuff</h1>
@@ -81,7 +81,6 @@ def run_server(port: int):
 
 
 def main():
-
     threads: list[threading.Thread] = []
 
     for port in PORTS:
@@ -96,6 +95,7 @@ def main():
     
     for thread in threads:
         thread.join()
+
 
 if __name__ == "__main__":
     main()
