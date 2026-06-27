@@ -1,0 +1,25 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    # Reachable from the proxy over the compose network as "backend".
+    # No host ports are published; only the proxy needs to talk to it.
+    expose:
+      - "8001"
+      - "8002"
+      - "8003"
+    restart: unless-stopped
+
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    environment:
+      # Point the proxy at the backend service instead of 127.0.0.1.
+      BACKEND_HOST: backend
+    ports:
+      - "9999:9999"
+    depends_on:
+      - backend
+    restart: unless-stopped

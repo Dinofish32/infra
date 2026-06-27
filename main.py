@@ -1,10 +1,12 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import logging
+import os
 import time
 import threading
 
-HOST = "localhost"
+# Uses env var BIND_HOST to bind to all interfaces
+HOST = os.environ.get("BIND_HOST", "0.0.0.0")
 PORTS = [8001, 8002, 8003]
 
 logging.basicConfig(
@@ -31,7 +33,7 @@ class BackendHandler(BaseHTTPRequestHandler):
                     <title>Networking Project</title>
                 </head>
                 <body>
-                    <h1>did i just network stuff</h1>
+                    <h1>Did I just network stuff?</h1>
                     <p>Served by port {backend_port}</p>
                 </body>
             </html>          

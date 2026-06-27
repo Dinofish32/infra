@@ -1,14 +1,20 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import logging
+import os
 import requests
 import time
-from threading import Thread
+from threading import Thread, Lock
 
 import metrics
 
 BACKEND_PORTS = [8001, 8002, 8003]
 _backend_index = 0
-HOST = "localhost"
+_backend_lock = Lock()
+# Bind to all interfaces by default so the proxy is reachable from outside
+# the container. Override with BIND_HOST=127.0.0.1 for a local-only run.
+HOST = os.environ.get("BIND_HOST", "0.0.0.0")
+# Where the backend lives. In Docker Compose this is the backend service name.
+BACKEND_HOST = os.environ.get("BACKEND_HOST", "127.0.0.1")
 PORT = 9999
 MAX_RETRIES = 2
 backend_status = {port: True for port in BACKEND_PORTS}
@@ -25,7 +31,7 @@ def health_check():
             while retries < MAX_RETRIES:
                 try:
                     response = requests.get(
-                        f"http://localhost:{port}/health",
+                        f"http://{BACKEND_HOST}:{port}/health",
                         timeout=2
                     )
                     backend_status[port] = response.status_code == 200
@@ -45,14 +51,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
     @staticmethod
     def get_backend():
         global _backend_index
-        start = _backend_index
-        while not backend_status[BACKEND_PORTS[_backend_index]]:
+        with _backend_lock:
+            start = _backend_index
+            while not backend_status[BACKEND_PORTS[_backend_index]]:
+                _backend_index = (_backend_index + 1) % len(BACKEND_PORTS)
+                if _backend_index == start:
+                    return None
+            port = BACKEND_PORTS[_backend_index]
             _backend_index = (_backend_index + 1) % len(BACKEND_PORTS)
-            if _backend_index == start:
-                return None
-        port = BACKEND_PORTS[_backend_index]
-        _backend_index = (_backend_index + 1) % len(BACKEND_PORTS)
-        return f"http://localhost:{port}"
+        return f"http://{BACKEND_HOST}:{port}"
 
     def _send_error(self, status: int, message: str):
         body = message.encode("utf-8")
@@ -73,40 +80,49 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
 
         metrics.record_request()
+        metrics.inc_active()
         start = time.perf_counter()
-        backend_url = ProxyHandler.get_backend()
-        if backend_url is None:
-            self._send_error(503, "No healthy backends available")
-            return
-        logging.info(f"Forwarding to {backend_url}")
         try:
-            backend_response = requests.get(
-                backend_url + self.path,
-                timeout=(2, 10),
-            )
-        except requests.RequestException as exc:
-            logging.error(f"Backend {backend_url} failed: {exc}")
-            self._send_error(502, f"Bad gateway: {backend_url} unavailable")
-            return
+            backend_url = ProxyHandler.get_backend()
+            if backend_url is None:
+                metrics.record_failure()
+                self._send_error(503, "No healthy backends available")
+                return
+            logging.info(f"Forwarding to {backend_url}")
+            try:
+                backend_response = requests.get(
+                    backend_url + self.path,
+                    timeout=(2, 10),
+                )
+            except requests.RequestException as exc:
+                metrics.record_failure()
+                logging.error(f"Backend {backend_url} failed: {exc}")
+                self._send_error(502, f"Bad gateway: {backend_url} unavailable")
+                return
 
-        latency_ms = (time.perf_counter() - start) * 1000
-        logging.info(f"Latency: {latency_ms:.2f} ms")
+            if backend_response.status_code >= 500:
+                metrics.record_failure()
 
-        self.send_response(backend_response.status_code)
+            self.send_response(backend_response.status_code)
 
-        excluded_headers = [
-            "Transfer-Encoding",
-            "Content-Encoding",
-            "Content-Length",
-            "Connection"
-        ]
+            excluded_headers = [
+                "Transfer-Encoding",
+                "Content-Encoding",
+                "Content-Length",
+                "Connection"
+            ]
 
-        for key, value in backend_response.headers.items():
-            if key not in excluded_headers:
-                self.send_header(key, value)
+            for key, value in backend_response.headers.items():
+                if key not in excluded_headers:
+                    self.send_header(key, value)
 
-        self.end_headers()
-        self.wfile.write(backend_response.content)
+            self.end_headers()
+            self.wfile.write(backend_response.content)
+        finally:
+            latency_ms = (time.perf_counter() - start) * 1000
+            metrics.record_latency(latency_ms)
+            metrics.dec_active()
+            logging.info(f"Latency: {latency_ms:.2f} ms")
 
 def main():
     health_check_thread = Thread(target=health_check, daemon=True)

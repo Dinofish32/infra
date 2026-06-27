@@ -1,0 +1,20 @@
+# Backend image — runs main.py (3 threaded HTTP servers on 8001/8002/8003).
+FROM python:3.13-slim
+
+# Don't write .pyc files and flush logs straight to stdout.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# The backend uses only the Python standard library, so there are no
+# dependencies to install. Copy just the files it needs.
+COPY main.py ./
+
+# Run as a non-root user.
+RUN useradd --create-home appuser
+USER appuser
+
+EXPOSE 8001 8002 8003
+
+CMD ["python", "main.py"]
