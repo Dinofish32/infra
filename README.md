@@ -164,6 +164,19 @@ python loadgenerator.py              # terminal 4: fire load (optional)
 A `Procfile` is also provided (`backend: python main.py`, `proxy: python proxy.py`)
 for process managers like `foreman`/`honcho`.
 
+### Tests
+```bash
+pip install -r requirements-dev.txt   # requests + pytest
+pytest                                # runs the full suite
+```
+- `tests/test_metrics.py` — unit tests for `metrics.py` (counters, rolling RPS
+  window/pruning, percentiles, bounded latency deque, render format) plus
+  thread-safety tests that hammer the shared counters from many threads.
+- `tests/test_proxy_failover.py` — integration tests that start real backend
+  servers + a real proxy and verify round-robin, failover to healthy backends,
+  `503` when none are healthy, `502` on backend connection errors, and live
+  health-check detection.
+
 ---
 
 ## Endpoints reference
@@ -191,6 +204,9 @@ for process managers like `foreman`/`honcho`.
 | `dashboard.py`       | Live terminal dashboard client for `/metrics`.              |
 | `loadgenerator.py`   | Open-loop load generator against the proxy (percentiles).   |
 | `requirements.txt`   | Python deps (`requests==2.32.3`); backend needs none.       |
+| `requirements-dev.txt` | Dev/test deps (`pytest` + runtime deps).                  |
+| `tests/`             | pytest suite: `metrics` unit/thread-safety + proxy failover.|
+| `conftest.py`        | Makes repo root importable and quiets logging during tests. |
 | `Dockerfile.backend` | Image for `main.py` (Python 3.13-slim, non-root).           |
 | `Dockerfile.proxy`   | Image for `proxy.py` + `metrics.py` (installs deps).        |
 | `docker-compose.yml` | Wires backend + proxy; publishes proxy `9999`.              |
@@ -218,7 +234,8 @@ for process managers like `foreman`/`honcho`.
 - Ports and backend count are hardcoded (not env-configurable).
 - Metrics are **in-process** on the proxy and reset on restart; not
   persisted or scraped by a real Prometheus in this setup.
-- No automated tests.
+- Test suite covers `metrics.py` (incl. thread safety) and proxy failover;
+  `main.py`, `dashboard.py`, and `loadgenerator.py` are not yet covered.
 - Health-check failover reacts on the check interval, not per-request; a
   backend that dies between checks will produce `502`s until the next check
   marks it unhealthy.
@@ -231,6 +248,6 @@ for process managers like `foreman`/`honcho`.
 
 - Proxy `POST`/other methods through the load balancer.
 - Make ports, backend count, and timeouts env-configurable.
-- Add tests (unit for `metrics.py`, integration for proxy failover).
+- Extend test coverage to `main.py`, `dashboard.py`, and `loadgenerator.py`.
 - Consider persistent/scrapeable metrics or a real Prometheus + Grafana.
 - Per-request retry to the next healthy backend on connection failure.
