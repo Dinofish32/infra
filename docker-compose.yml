@@ -18,8 +18,26 @@ services:
     environment:
       # Point the proxy at the backend service instead of 127.0.0.1.
       BACKEND_HOST: backend
+      # Shared bearer token for /api/* (from host env or .env; empty = open).
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     ports:
       - "9999:9999"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    environment:
+      # Reach the proxy over the compose network by service name.
+      PROXY_URL: http://proxy:9999
+      # Same token the proxy expects, so the MCP tools can call /api/*.
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+    # Expose the MCP HTTP endpoint (served at /mcp) for external use.
+    ports:
+      - "8080:8080"
+    depends_on:
+      - proxy
     restart: unless-stopped

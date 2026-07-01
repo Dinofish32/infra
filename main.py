@@ -1,4 +1,5 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+import argparse
 import json
 import logging
 import os
@@ -83,9 +84,20 @@ def run_server(port: int):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Backend HTTP server(s)")
+    parser.add_argument(
+        "ports",
+        nargs="*",
+        type=int,
+        default=PORTS,
+        help="port(s) to serve; omit to run all defaults (8001 8002 8003). "
+             "Pass a single port to run one killable backend for failover testing.",
+    )
+    args = parser.parse_args()
+
     threads: list[threading.Thread] = []
 
-    for port in PORTS:
+    for port in args.ports:
         thread = threading.Thread(
             target=run_server,
             args=(port,)

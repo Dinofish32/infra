@@ -1,0 +1,28 @@
+# MCP server image — exposes proxy metrics + backend controls as MCP tools
+# over the streamable-HTTP transport on port 8080.
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Serve the MCP endpoint over HTTP (not stdio) so it can be reached on a port.
+ENV MCP_TRANSPORT=streamable-http \
+    MCP_HOST=0.0.0.0 \
+    MCP_PORT=8080
+
+WORKDIR /app
+
+# Install dependencies first for layer caching. requirements-mcp.txt pulls in
+# requirements.txt via `-r`, so both files are needed at build time.
+COPY requirements.txt requirements-mcp.txt ./
+RUN pip install --no-cache-dir -r requirements-mcp.txt
+
+# The MCP server only needs itself; it talks to the proxy over HTTP.
+COPY mcp_server.py ./
+
+RUN useradd --create-home appuser
+USER appuser
+
+EXPOSE 8080
+
+CMD ["python", "mcp_server.py"]
