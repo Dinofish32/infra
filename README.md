@@ -319,12 +319,3 @@ backends with no (or a single) error, then restart it to see it rejoin.
   backend is unreachable for that request.
 - `docker-compose.yml` runs a single backend container hosting all three
   ports (not three separate backend instances).
-
----
-
-## Suggested next steps (for agents extending this)
-
-- Proxy `POST`/other methods through the load balancer.
-- Make ports, backend count, and timeouts env-configurable.
-- Extend test coverage to `main.py`, `dashboard.py`, and `loadgenerator.py`.
-- Consider persistent/scrapeable metrics or a real Prometheus + Grafana.
