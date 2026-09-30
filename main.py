@@ -34,7 +34,7 @@ class BackendHandler(BaseHTTPRequestHandler):
                     <title>Networking Project</title>
                 </head>
                 <body>
-                    <h1>Did I just network stuff?</h1>
+                    <h1>Akarsh's Infra Project</h1>
                     <p>Served by port {backend_port}</p>
                 </body>
             </html>          

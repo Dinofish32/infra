@@ -79,7 +79,9 @@ project — no aspirational features are listed as if they exist.
   with `MAX_RETRIES = 2`, timeout `2s`. Poll interval is `5s` when all
   healthy, `1s` when any are down. Updates the shared `backend_status` map.
 - **Admin / observability endpoints (not proxied):**
-  - `GET /metrics` → Prometheus-style plaintext (for the dashboard).
+  - `GET /metrics` → Prometheus-style plaintext (for the dashboard). Browsers
+    (`Accept: text/html`) get a live chart page (`metrics_page.html`) instead,
+    which polls the same URL with `Accept: application/json`.
   - `GET /api/metrics` → `metrics.snapshot()` as structured JSON.
   - `GET /api/backends` → JSON list of each backend's `healthy` / `drained` /
     `available` state.

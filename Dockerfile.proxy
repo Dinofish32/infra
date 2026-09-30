@@ -10,8 +10,8 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# proxy.py imports the metrics module, so both are needed.
-COPY proxy.py metrics.py ./
+# proxy.py imports the metrics module and serves the /metrics chart page.
+COPY proxy.py metrics.py metrics_page.html ./
 
 RUN useradd --create-home appuser
 USER appuser

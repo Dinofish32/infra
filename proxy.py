@@ -5,6 +5,7 @@ import logging
 import os
 import requests
 import time
+from pathlib import Path
 from threading import Thread, Lock
 
 import metrics
@@ -23,6 +24,8 @@ PORT = 9999
 # open (convenient for local dev, but unauthenticated).
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 MAX_RETRIES = 2
+# Live chart view of /metrics, served to browsers (Accept: text/html).
+METRICS_PAGE_PATH = Path(__file__).with_name("metrics_page.html")
 backend_status = {port: True for port in BACKEND_PORTS}
 # Administratively drained ports. Draining is a routing-layer override: the
 # health checker keeps reporting a backend's real health, but a drained backend
@@ -185,10 +188,23 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/metrics":
-            body = metrics.render_metrics().encode("utf-8")
+            # One URL, three views chosen by the Accept header: browsers get
+            # the live chart page, the page itself polls for JSON, and every
+            # other client (dashboard.py, curl, scrapers) keeps the plaintext.
+            accept = self.headers.get("Accept", "")
+            if "application/json" in accept:
+                self._send_json(200, metrics.snapshot())
+                return
+            if "text/html" in accept:
+                body = METRICS_PAGE_PATH.read_bytes()
+                content_type = "text/html; charset=utf-8"
+            else:
+                body = metrics.render_metrics().encode("utf-8")
+                content_type = "text/plain; charset=utf-8"
             self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Vary", "Accept")
             self.end_headers()
             self.wfile.write(body)
             return

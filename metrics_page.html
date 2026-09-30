@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proxy Metrics</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --status-good: #0ca30c;
+    --status-critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; }
+
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  .conn { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; }
+  .conn-icon { width: 8px; height: 8px; border-radius: 50%; background: var(--status-good); }
+  .conn[data-state="down"] .conn-icon { background: var(--status-critical); }
+  .window { color: var(--text-muted); font-size: 13px; margin-left: auto; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    transition: opacity 0.2s;
+  }
+  .stale .card { opacity: 0.55; }
+
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .tile-label { color: var(--text-secondary); font-size: 13px; }
+  .tile-value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+  .tile-note { color: var(--text-muted); font-size: 12px; margin-top: 2px; min-height: 17px; }
+  .tile.hero .tile-value { font-size: 48px; line-height: 1.1; }
+
+  .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .chart-title { font-size: 14px; font-weight: 600; margin: 0; }
+  .chart-sub { color: var(--text-muted); font-size: 12px; margin: 2px 0 8px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
+  .plot { position: relative; }
+  .plot svg { display: block; width: 100%; height: 220px; overflow: visible; }
+  .plot svg text { font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 13px; pointer-events: none; }
+
+  .tooltip {
+    position: absolute; top: 0; pointer-events: none; display: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    padding: 8px 10px; font-size: 12px; white-space: nowrap; z-index: 2;
+  }
+  .tooltip .t-time { color: var(--text-muted); margin-bottom: 4px; }
+  .tooltip .t-row { display: flex; align-items: center; gap: 8px; }
+  .tooltip .t-row i { width: 12px; height: 2px; border-radius: 1px; }
+  .tooltip .t-row b { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .tooltip .t-row span { color: var(--text-secondary); }
+
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+  table { border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 16px 6px 0; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-secondary); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-size: 12px; color: var(--text-secondary); }
+
+  @media (max-width: 760px) {
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .charts { grid-template-columns: minmax(0, 1fr); }
+    .tile.hero .tile-value { font-size: 36px; }
+    .window { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<main id="app">
+  <header>
+    <h1>Proxy metrics</h1>
+    <span class="conn" id="conn" data-state="up"><span class="conn-icon" aria-hidden="true"></span><span id="conn-text">Connecting…</span></span>
+    <span class="window">Updates every second · last 5 minutes</span>
+  </header>
+
+  <section class="tiles">
+    <div class="card tile hero">
+      <div class="tile-label">Requests per second</div>
+      <div class="tile-value" id="v-rps">–</div>
+      <div class="tile-note">rolling 1s window</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Total requests</div>
+      <div class="tile-value" id="v-total">–</div>
+      <div class="tile-note">since proxy start</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Failures</div>
+      <div class="tile-value" id="v-fail">–</div>
+      <div class="tile-note" id="v-fail-rate"></div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Active connections</div>
+      <div class="tile-value" id="v-active">–</div>
+      <div class="tile-note">in flight now</div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="card">
+      <h2 class="chart-title">Requests per second</h2>
+      <p class="chart-sub">Proxied requests in the last second</p>
+      <div class="plot" id="plot-rps"></div>
+    </div>
+    <div class="card">
+      <h2 class="chart-title">Latency (ms)</h2>
+      <p class="chart-sub">Percentiles over the last 1,000 requests</p>
+      <div class="legend">
+        <span><i style="background: var(--series-1)"></i>p50</span>
+        <span><i style="background: var(--series-2)"></i>p95</span>
+        <span><i style="background: var(--series-3)"></i>p99</span>
+      </div>
+      <div class="plot" id="plot-lat"></div>
+    </div>
+  </section>
+
+  <details class="card">
+    <summary>Current values as a table</summary>
+    <table>
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+    <p><code>curl http://&lt;host&gt;:9999/metrics</code> still returns the plaintext format.</p>
+  </details>
+</main>
+
+<script>
+(() => {
+  const POLL_MS = 1000;
+  const WINDOW_MS = 5 * 60 * 1000;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const history = [];
+  let latest = null;
+
+  const fmtInt = new Intl.NumberFormat();
+  const fmtCompact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+  const fmt1 = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const fmt2 = (v) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const big = (v) => (v >= 10000 ? fmtCompact.format(v) : fmtInt.format(v));
+
+  function el(tag, attrs = {}, parent) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  // Pick a clean tick step (1, 2, 5 × 10^n) giving about four ticks, and
+  // round the axis maximum up to a multiple of it.
+  function niceScale(v) {
+    if (v <= 0) return { max: 1, step: 0.25 };
+    const raw = v / 4;
+    const exp = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 5, 10].map((m) => m * exp).find((s) => s >= raw);
+    return { max: Math.ceil(v / step) * step, step };
+  }
+
+  // A time-series line chart with crosshair tooltip. `series` is a list of
+  // {key, label, color}; values are read from each history point by key.
+  function makeChart(container, series, { area = false, format = fmt1 } = {}) {
+    const svg = el("svg", { role: "img" }, container);
+    const tip = document.createElement("div");
+    tip.className = "tooltip";
+    container.appendChild(tip);
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "Waiting for data…";
+    container.appendChild(empty);
+
+    let hoverX = null;
+    const M = { top: 8, right: 44, bottom: 22, left: 40 };
+
+    function render() {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      const W = container.clientWidth, H = 220;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      const iw = W - M.left - M.right, ih = H - M.top - M.bottom;
+      empty.style.display = history.length < 2 ? "grid" : "none";
+      if (history.length < 2) { tip.style.display = "none"; return; }
+
+      const now = history[history.length - 1].t;
+      const t0 = Math.max(history[0].t, now - WINDOW_MS);
+      const span = Math.max(now - t0, 1);
+      const { max: maxVal, step } = niceScale(Math.max(...history.flatMap((p) => series.map((s) => p[s.key]))));
+      const x = (t) => M.left + ((t - t0) / span) * iw;
+      const y = (v) => M.top + ih - (v / maxVal) * ih;
+
+      // Gridlines + y ticks at each clean step.
+      for (let i = 0; i * step <= maxVal + 1e-9; i++) {
+        const v = i * step;
+        el("line", { x1: M.left, x2: M.left + iw, y1: y(v), y2: y(v),
+          stroke: i === 0 ? "var(--baseline)" : "var(--grid)", "stroke-width": 1 }, svg);
+        el("text", { x: M.left - 6, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = fmt1(v);
+      }
+      // X ticks: start and end of the visible window.
+      el("text", { x: M.left, y: H - 4, "text-anchor": "start" }, svg).textContent = fmtTime(t0);
+      el("text", { x: M.left + iw, y: H - 4, "text-anchor": "end" }, svg).textContent = fmtTime(now);
+
+      const pts = history.filter((p) => p.t >= t0);
+      for (const s of series) {
+        const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[s.key]).toFixed(1)}`).join("");
+        if (area) {
+          el("path", { d: `${d}L${x(pts[pts.length - 1].t)},${y(0)}L${x(pts[0].t)},${y(0)}Z`,
+            fill: s.color, "fill-opacity": 0.1 }, svg);
+        }
+        el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2,
+          "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      }
+
+      // End values: label the latest point of each series, skipping any
+      // label that would collide with one already placed.
+      const placed = [];
+      const last = pts[pts.length - 1];
+      for (const s of series) {
+        const ly = y(last[s.key]);
+        el("circle", { cx: x(last.t), cy: ly, r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2 }, svg);
+        if (placed.every((p) => Math.abs(p - ly) >= 13)) {
+          placed.push(ly);
+          const t = el("text", { x: x(last.t) + 8, y: ly + 4 }, svg);
+          t.style.fill = "var(--text-secondary)";
+          t.textContent = format(last[s.key]);
+        }
+      }
+
+      // Crosshair + tooltip for the history point nearest the pointer.
+      if (hoverX !== null) {
+        const tAt = t0 + ((hoverX - M.left) / iw) * span;
+        let best = pts[0];
+        for (const p of pts) if (Math.abs(p.t - tAt) < Math.abs(best.t - tAt)) best = p;
+        const cx = x(best.t);
+        el("line", { x1: cx, x2: cx, y1: M.top, y2: M.top + ih, stroke: "var(--baseline)", "stroke-width": 1 }, svg);
+        for (const s of series) {
+          el("circle", { cx, cy: y(best[s.key]), r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2 }, svg);
+        }
+        tip.replaceChildren();
+        const time = document.createElement("div");
+        time.className = "t-time";
+        time.textContent = fmtTime(best.t);
+        tip.appendChild(time);
+        for (const s of series) {
+          const row = document.createElement("div");
+          row.className = "t-row";
+          const key = document.createElement("i");
+          key.style.background = s.color;
+          const val = document.createElement("b");
+          val.textContent = format(best[s.key]);
+          const name = document.createElement("span");
+          name.textContent = s.label;
+          row.append(key, val, name);
+          tip.appendChild(row);
+        }
+        tip.style.display = "block";
+        const tw = tip.offsetWidth;
+        tip.style.left = `${cx + 12 + tw > W ? cx - 12 - tw : cx + 12}px`;
+        tip.style.top = `${M.top}px`;
+      } else {
+        tip.style.display = "none";
+      }
+    }
+
+    svg.addEventListener("pointermove", (e) => {
+      const r = svg.getBoundingClientRect();
+      hoverX = Math.min(Math.max(e.clientX - r.left, M.left), r.width - M.right);
+      render();
+    });
+    svg.addEventListener("pointerleave", () => { hoverX = null; render(); });
+    return render;
+  }
+
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const charts = [
+    makeChart(document.getElementById("plot-rps"),
+      [{ key: "rps", label: "req/s", color: "var(--series-1)" }], { area: true }),
+    makeChart(document.getElementById("plot-lat"), [
+      { key: "p50", label: "p50", color: "var(--series-1)" },
+      { key: "p95", label: "p95", color: "var(--series-2)" },
+      { key: "p99", label: "p99", color: "var(--series-3)" },
+    ], { format: (v) => `${fmt2(v)} ms` }),
+  ];
+  const renderAll = () => charts.forEach((r) => r());
+
+  function updateText(s) {
+    document.getElementById("v-rps").textContent = fmt1(s.requests_per_second);
+    document.getElementById("v-total").textContent = big(s.requests_total);
+    document.getElementById("v-fail").textContent = big(s.failures_total);
+    document.getElementById("v-active").textContent = fmtInt.format(s.active_connections);
+    const rate = s.requests_total ? (s.failures_total / s.requests_total) * 100 : 0;
+    document.getElementById("v-fail-rate").textContent =
+      s.requests_total ? `${rate.toFixed(rate < 1 && rate > 0 ? 2 : 1)}% of requests` : "";
+
+    const rows = [
+      ["Requests per second", fmt2(s.requests_per_second)],
+      ["Total requests", fmtInt.format(s.requests_total)],
+      ["Failures", fmtInt.format(s.failures_total)],
+      ["Active connections", fmtInt.format(s.active_connections)],
+      ["Latency avg (ms)", fmt2(s.latency_avg_ms)],
+      ["Latency p50 (ms)", fmt2(s.latency_p50_ms)],
+      ["Latency p95 (ms)", fmt2(s.latency_p95_ms)],
+      ["Latency p99 (ms)", fmt2(s.latency_p99_ms)],
+    ];
+    const body = document.getElementById("table-body");
+    body.replaceChildren(...rows.map(([k, v]) => {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td"); a.textContent = k;
+      const b = document.createElement("td"); b.className = "num"; b.textContent = v;
+      tr.append(a, b);
+      return tr;
+    }));
+  }
+
+  function setConn(up) {
+    document.getElementById("conn").dataset.state = up ? "up" : "down";
+    document.getElementById("conn-text").textContent = up ? "Live" : "Disconnected — retrying";
+    document.getElementById("app").classList.toggle("stale", !up);
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch("/metrics", { headers: { Accept: "application/json" }, cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      latest = await res.json();
+      const t = Date.now();
+      history.push({ t, rps: latest.requests_per_second,
+        p50: latest.latency_p50_ms, p95: latest.latency_p95_ms, p99: latest.latency_p99_ms });
+      while (history.length && history[0].t < t - WINDOW_MS) history.shift();
+      updateText(latest);
+      setConn(true);
+      renderAll();
+    } catch {
+      setConn(false);
+    } finally {
+      setTimeout(poll, POLL_MS);
+    }
+  }
+
+  window.addEventListener("resize", renderAll);
+  renderAll();
+  poll();
+})();
+</script>
+</body>
+</html>

@@ -234,6 +234,22 @@ def test_metrics_plaintext_endpoint_stays_open_with_token(stack, monkeypatch):
     assert requests.get(stack.url + "/metrics", timeout=5).status_code == 200
 
 
+def test_metrics_negotiates_plaintext_html_and_json(stack):
+    # Default clients (dashboard.py, curl) keep the plaintext format.
+    plain = requests.get(stack.url + "/metrics", timeout=5)
+    assert plain.headers["Content-Type"].startswith("text/plain")
+    assert "http_requests_total" in plain.text
+
+    # Browsers get the chart page.
+    html = requests.get(stack.url + "/metrics", headers={"Accept": "text/html"}, timeout=5)
+    assert html.headers["Content-Type"].startswith("text/html")
+    assert "<title>Proxy Metrics</title>" in html.text
+
+    # The page polls for JSON, which stays open like the plaintext view.
+    data = requests.get(stack.url + "/metrics", headers={"Accept": "application/json"}, timeout=5).json()
+    assert "latency_p99_ms" in data
+
+
 # NOTE: keep this test last in the file. It starts the real (infinite) health
 # check loop in a daemon thread; that thread keeps mutating proxy globals, so
 # no later test in this module should rely on a clean routing state.
